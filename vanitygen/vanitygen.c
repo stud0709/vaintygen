@@ -40,6 +40,8 @@
 #include "simplevanitygen.h"
 
 #include "ticker.h"
+
+#include "bruteforce.h"
 char ticker[10];
 
 int GRSFlag = 0;
@@ -54,7 +56,7 @@ const char *version = VANITYGEN_VERSION;
 void *
 vg_thread_loop(void *arg)
 {
-	unsigned char hash_buf[128];
+	unsigned char hash_buf[128]{};
 	unsigned char *eckey_buf;
 	unsigned char hash1[32];
 
@@ -347,6 +349,7 @@ usage(const char *name)
 "-l <nbits>    Specify number of bits in prefix, only relevant when -Z is specified\n"
 "-z            Format output of matches in CSV(disables verbose mode)\n"
 "              Output as [COIN],[PREFIX],[ADDRESS],[PRIVKEY]\n",
+"-u            Match against address list\n",
 version, name);
 }
 
@@ -400,7 +403,7 @@ main(int argc, char **argv)
 	int nthreads = 0;
 	vg_context_t *vcp = NULL;
 	EC_POINT *pubkey_base = NULL;
-	char privkey_prefix[32];
+	char privkey_prefix[32]{0};
 	int privkey_prefix_length = 0;
 	int privkey_prefix_nbits = 0;
 
@@ -409,10 +412,11 @@ main(int argc, char **argv)
 	int npattfp = 0;
 	int pattstdin = 0;
 	int compressed = 0;
+	int brute_force_adr_list = 0;
 
 	int i;
 
-	while ((opt = getopt(argc, argv, "vqnrik1ezE:P:C:X:Y:F:t:h?f:o:s:Z:a:l:")) != -1) {
+	while ((opt = getopt(argc, argv, "vqnrik1ezE:P:C:X:Y:F:t:h?f:o:s:Z:a:l:u:")) != -1) {
 		switch (opt) {
 		case 'c':
 		        compressed = 1;
@@ -607,6 +611,9 @@ main(int argc, char **argv)
 				return 1;
 			}
 			break;
+		case 'u':
+			brute_force_adr_list = 1;
+			fprintf(stderr, "Activating brute force mode\n");
 		case 'f':
 			if (npattfp >= MAX_FILE) {
 				fprintf(stderr,
@@ -628,6 +635,7 @@ main(int argc, char **argv)
 						optarg, strerror(errno));
 					return 1;
 				}
+				fprintf(stderr, "%s opened\n", optarg);
 			}
 			pattfp[npattfp] = fp;
 			pattfpi[npattfp] = caseinsensitive;
@@ -669,7 +677,7 @@ main(int argc, char **argv)
 			usage(argv[0]);
 			return 1;
 		}
-	}
+	} //end while	
 
 #if OPENSSL_VERSION_NUMBER < 0x10000000L
 	/* Complain about older versions of OpenSSL */
@@ -889,6 +897,9 @@ main(int argc, char **argv)
 	if (regex) {
 		vcp = vg_regex_context_new(addrtype, privtype);
 
+	}
+	else if (brute_force_adr_list) {
+		vcp = bruteforce_context_new(addrtype, privtype);
 	} else {
 		vcp = vg_prefix_context_new(addrtype, privtype,
 					    caseinsensitive);
@@ -926,10 +937,10 @@ main(int argc, char **argv)
 
 	for (i = 0; i < npattfp; i++) {
 		fp = pattfp[i];
-		if (!vg_read_file(fp, &patterns, &npatterns)) {
-			fprintf(stderr, "Failed to load pattern file\n");
-			return 1;
-		}
+			if (!vg_read_file(fp, &patterns, &npatterns)) {
+				fprintf(stderr, "Failed to load pattern file\n");
+				return 1;
+			}
 		if (fp != stdin)
 			fclose(fp);
 

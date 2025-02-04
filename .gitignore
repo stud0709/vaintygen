@@ -1,0 +1,17 @@
+.vs/
+DependenciesPrerequisites/curl-7.26.0/compile-VS2019/lib/.vs/libcurl/v17/
+DependenciesPrerequisites/pcre-8.45/compile-VS2019/.vs/pcre/v17/
+DependenciesPrerequisites/pthreads-2.9.1/compile-VS2019/.vs/pthread/v17/
+VS2019all/.vs/all/FileContentIndex/
+VS2019all/.vs/all/v17/
+keyconv/.vs/keyconv/v17/
+oclvanitygen/.vs/oclvanitygen/FileContentIndex/
+oclvanitygen/.vs/oclvanitygen/v17/
+oclvanitygen/oclvanitygen/
+oclvanitygen/x64/
+oclvanityminer/.vs/oclvanityminer/FileContentIndex/
+oclvanityminer/.vs/oclvanityminer/v17/
+vanitygen/.vs/vanitygen/FileContentIndex/
+vanitygen/.vs/vanitygen/v17/
+vanitygen/vanitygen/
+vanitygen/x64/
