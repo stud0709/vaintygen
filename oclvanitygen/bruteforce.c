@@ -26,34 +26,48 @@
 #include "ticker.h"
 #include "avl.h"
 #include <Windows.h>
+#include <vector>
+#include <array>
+#include <cmath>
 
 #define BYTES_TO_COMPARE 21
 #define ADR_LENGTH 25
-#define VERBOSE
+//#define VERBOSE
 
 typedef struct _bruteforce_context_s {
-	vg_context_t		base;
-	char** addresses;
-	//avl_root_t		vcp_avlroot;
-	//BIGNUM* vcp_difficulty;
-	//int			vcp_caseinsensitive;
+	vg_context_t base;
+	std::vector <std::vector<std::array<char, BYTES_TO_COMPARE>>> hashmap;
+	unsigned int bits_for_hash;
+
+	_bruteforce_context_s() {
+		std::memset(&base, 0, sizeof(base));
+	}
 } bruteforce_context_t;
 
 static void
 bruteforce_context_free(vg_context_t* vcp)
 {
+	/*
 	bruteforce_context_t* vcpp = (bruteforce_context_t*)vcp;
-	free(vcpp->addresses);
-	free(vcpp);
+	delete(vcpp);
+	*/
 }
 
-static int compare_addresses(void* context, const void* a, const void* b) {
-	bruteforce_context_t* vcpp = (bruteforce_context_t*)context;
+static unsigned long long rotateLeft(unsigned long long value, unsigned int shift) {
+	unsigned int bitCount = sizeof(value) * 8;  // Get the bit width (e.g., 32 for unsigned int)
+	shift = shift % bitCount;  // Handle shifts greater than the bit width
+	return (value << shift) | (value >> (bitCount - shift));
+}
 
-	const char* adr1 = *(const char**)a;
-	const char* adr2 = *(const char**)b;
+static int calculate_hash(char* bytes2compare, bruteforce_context_t* vcpp) {
 
-	return memcmp(adr1, adr2, BYTES_TO_COMPARE);
+	unsigned int hashcode = 0;
+
+	for (int i = 0; i < vcpp->bits_for_hash; i++) {
+		hashcode = hashcode * 31 + bytes2compare[i];
+	}
+
+	return hashcode % vcpp->base.vc_npatterns;
 }
 
 static int
@@ -61,52 +75,73 @@ bruteforce_context_add_patterns(vg_context_t* vcp,
 	const char** const patterns, int npatterns)
 {
 	bruteforce_context_t* vcpp = (bruteforce_context_t*)vcp;
-	if (vcpp->base.vc_verbose > 1) {
-		fprintf(stderr, "Adding and sorting %i patterns...", npatterns);
-	}
 
-	char** addresses = (char**)malloc(npatterns * sizeof(char*));
+#ifdef VERBOSE
+	if (vcpp->base.vc_verbose > 1) {
+		fprintf(stderr, "Adding %i patterns...", npatterns);
+	}
+#endif
+
+	vcpp->bits_for_hash = log2(npatterns) * 2;
+	vcpp->base.vc_npatterns = npatterns;
+
+	std::vector<std::array<char, BYTES_TO_COMPARE>> def;
+	vcpp->hashmap.resize(npatterns, def);
+
+	unsigned int max_hashcode = 0;
+
 	for (int i = 0; i < npatterns; i++) {
 		const char* encoded = patterns[i];
+
+#ifdef VERBOSE
 		if (vcpp->base.vc_verbose > 1) {
 			fprintf(stderr, "\nprocessing %i: %s", i, encoded);
 		}
+#endif
+
 		char decoded[ADR_LENGTH];
-		int check = vg_b58_decode_check(encoded, decoded, ADR_LENGTH * sizeof(char));
-		char* bytes2compare = (char*)malloc(BYTES_TO_COMPARE * sizeof(char));
-		memcpy(bytes2compare, decoded, BYTES_TO_COMPARE * sizeof(char));
+		int check = vg_b58_decode_check(encoded, decoded, ADR_LENGTH);
+		std::array<char, BYTES_TO_COMPARE> bytes2compare{};
+		memcpy(bytes2compare.data(), decoded, BYTES_TO_COMPARE);
+
+		int hashcode = calculate_hash(bytes2compare.data(), vcpp);
+		max_hashcode = max(max_hashcode, hashcode);
+
+		vcpp->hashmap.at(hashcode).push_back(bytes2compare);
+
+#ifdef VERBOSE
 		if (vcpp->base.vc_verbose > 1) {
 			fprintf(stderr, " -> ");
 			char hex[BYTES_TO_COMPARE * 3]{};
-			size_t hexsz = BYTES_TO_COMPARE * sizeof(char) * 3;
-			hex_enc(hex, &hexsz, bytes2compare, BYTES_TO_COMPARE * sizeof(char));
+			size_t hexsz = BYTES_TO_COMPARE * 3;
+			hex_enc(hex, &hexsz, bytes2compare.data(), BYTES_TO_COMPARE);
 			fprintf(stderr, "%s", hex);
-			fprintf(stderr, " at %p", bytes2compare);
+			fprintf(stderr, "\n\thashcode: %i, collisions: %i", hashcode, vcpp->hashmap.at(hashcode).size() - 1);
 		}
-		addresses[i] = bytes2compare;
+#endif
 	}
 
-	qsort_s(addresses, npatterns, sizeof(char*), compare_addresses, vcp);
-
+#ifdef VERBOSE
 	if (vcpp->base.vc_verbose > 1) {
-		fprintf(stderr, "\nResult:");
-
-		for (int i = 0; i < npatterns; i++) {
-			const char* adr = addresses[i];
-			char hex[BYTES_TO_COMPARE * 3]{};
-			size_t hexsz = BYTES_TO_COMPARE * sizeof(char) * 3;
-			hex_enc(hex, &hexsz, adr, BYTES_TO_COMPARE * sizeof(char));
-			fprintf(stderr, "\n%s at %p", hex, adr);
+		for (unsigned int i = 0; i < vcpp->hashmap.size(); i++) {
+			fprintf(stderr, "\n--- Hashcode %u ---", i);
+			for (std::array<char, BYTES_TO_COMPARE> bytes2compare : vcpp->hashmap.at(i)) {
+				char hex[BYTES_TO_COMPARE * 3]{};
+				size_t hexsz = BYTES_TO_COMPARE * 3;
+				hex_enc(hex, &hexsz, bytes2compare.data(), BYTES_TO_COMPARE);
+				fprintf(stderr, "\n%s", hex);
+			}
 		}
 	}
+#endif
 
-	vcpp->base.vc_npatterns = npatterns;
-	vcpp->addresses = addresses;
+	int empty = 0, max_collisions = 0;
 
-	if (vcpp->base.vc_verbose > 1) {
-		fprintf(stderr, " done!\n");
-		fprintf(stderr, "Addresses set to %p, element 0: %p\n", vcpp->addresses, vcpp->addresses[0]);
+	for (unsigned int i = 0; i < vcpp->hashmap.size(); i++) {
+		if (vcpp->hashmap.at(i).empty()) empty++;
+		max_collisions = max(max_collisions, vcpp->hashmap.at(i).size());
 	}
+	fprintf(stderr, "\nmax. hashcode: %u, empty: %i, max. collisions: %i - done!\n", max_hashcode, empty, max_collisions);
 
 	return 1;
 }
@@ -114,14 +149,14 @@ bruteforce_context_add_patterns(vg_context_t* vcp,
 static void
 bruteforce_context_clear_all_patterns(vg_context_t* vcp)
 {
+	/*
 	bruteforce_context_t* vcpp = (bruteforce_context_t*)vcp;
 	if (vcpp->base.vc_verbose > 1) {
 		fprintf(stderr, "Clearing all patterns...");
 	}
 
-	for (int i = 0; i < vcpp->base.vc_npatterns; i++) {
-		free(vcpp->addresses[i]);
-	}
+	delete& vcpp->hashmap;
+	*/
 }
 
 
@@ -130,6 +165,7 @@ static int
 bruteforce_test(vg_exec_context_t* vxcp)
 {
 	bruteforce_context_t* vcpp = (bruteforce_context_t*)vxcp->vxc_vc;
+	int hashcode = calculate_hash((char*)vxcp->vxc_binres, vcpp);
 
 research:
 #ifdef VERBOSE
@@ -137,15 +173,31 @@ research:
 		char hex[BYTES_TO_COMPARE * 3]{};
 		size_t hexsz = BYTES_TO_COMPARE * sizeof(char) * 3;
 		hex_enc(hex, &hexsz, vxcp->vxc_binres, BYTES_TO_COMPARE * sizeof(char));
-		fprintf(stderr, "Candidate: %s at %p", hex, vxcp->vxc_binres);
+		fprintf(stderr, "\nCandidate: %s at %p hash %i", hex, vxcp->vxc_binres, hashcode);
 	}
 #endif
 
-	char* p_binres = (char*)&vxcp->vxc_binres[0];
+	boolean found = false;
 
-	char** result = (char**)bsearch_s(&p_binres, vcpp->addresses, vcpp->base.vc_npatterns, sizeof(char*), compare_addresses, vxcp->vxc_vc);
+	for (std::array<char, BYTES_TO_COMPARE> bytes2compare : vcpp->hashmap.at(hashcode)) {
+#ifdef VERBOSE
+		if (vcpp->base.vc_verbose > 1) {
+			char hex[BYTES_TO_COMPARE * 3]{};
+			size_t hexsz = BYTES_TO_COMPARE * 3;
+			hex_enc(hex, &hexsz, bytes2compare.data(), BYTES_TO_COMPARE);
+			fprintf(stderr, "\n\ttrying %s", hex);
+		}
+#endif
 
-	if (result == NULL) {
+		if (!memcmp(vxcp->vxc_binres, bytes2compare.data(), BYTES_TO_COMPARE)) {
+			found = true;
+			break;
+		}
+
+		if (found) break;
+	}
+
+	if (!found) {
 		return 0;
 	}
 
@@ -173,21 +225,18 @@ vg_context_t*
 bruteforce_context_new(int addrtype, int privtype)
 {
 	fprintf(stderr, "Brute force length: %d bytes\n", BYTES_TO_COMPARE);
-	bruteforce_context_t* vcpp;
+	bruteforce_context_t* vcpp = new bruteforce_context_t();
 
-	vcpp = (bruteforce_context_t*)malloc(sizeof(*vcpp));
-	if (vcpp) {
-		memset(vcpp, 0, sizeof(*vcpp));
-		vcpp->base.vc_addrtype = addrtype;
-		vcpp->base.vc_privtype = privtype;
-		vcpp->base.vc_npatterns = 0;
-		vcpp->base.vc_npatterns_start = 0;
-		vcpp->base.vc_found = 0;
-		vcpp->base.vc_chance = 0.0;
-		vcpp->base.vc_free = bruteforce_context_free;
-		vcpp->base.vc_add_patterns = bruteforce_context_add_patterns;
-		vcpp->base.vc_clear_all_patterns = bruteforce_context_clear_all_patterns;
-		vcpp->base.vc_test = bruteforce_test;
-	}
+	vcpp->base.vc_addrtype = addrtype;
+	vcpp->base.vc_privtype = privtype;
+	vcpp->base.vc_npatterns = 0;
+	vcpp->base.vc_npatterns_start = 0;
+	vcpp->base.vc_found = 0;
+	vcpp->base.vc_chance = 0.0;
+	vcpp->base.vc_free = bruteforce_context_free;
+	vcpp->base.vc_add_patterns = bruteforce_context_add_patterns;
+	vcpp->base.vc_clear_all_patterns = bruteforce_context_clear_all_patterns;
+	vcpp->base.vc_test = bruteforce_test;
+
 	return &vcpp->base;
 }
