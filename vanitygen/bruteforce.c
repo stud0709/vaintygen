@@ -32,12 +32,11 @@
 
 #define BYTES_TO_COMPARE 21
 #define ADR_LENGTH 25
-#define VERBOSE
+//#define VERBOSE
 
 typedef struct _bruteforce_context_s {
 	vg_context_t base;
 	std::vector <std::vector<std::array<char, BYTES_TO_COMPARE>>> hashmap;
-	unsigned int bits_for_hash;
 
 	_bruteforce_context_s() {
 		std::memset(&base, 0, sizeof(base));
@@ -60,14 +59,9 @@ static unsigned long long rotateLeft(unsigned long long value, unsigned int shif
 }
 
 static int calculate_hash(char* bytes2compare, bruteforce_context_t* vcpp) {
+	unsigned long long hashcode = *(unsigned long long*) (bytes2compare + sizeof(char));
 
-	unsigned int hashcode = 0;
-
-	for (int i = 0; i < vcpp->bits_for_hash; i++) {
-		hashcode = hashcode * 31 + bytes2compare[i];
-	}
-
-	return hashcode % vcpp->base.vc_npatterns;
+	return (hashcode ^ (hashcode >> 17)) % vcpp->base.vc_npatterns;
 }
 
 static int
@@ -81,8 +75,6 @@ bruteforce_context_add_patterns(vg_context_t* vcp,
 		fprintf(stderr, "Adding %i patterns...", npatterns);
 	}
 #endif
-
-	vcpp->bits_for_hash = log2(npatterns) * 2;
 	vcpp->base.vc_npatterns = npatterns;
 
 	std::vector<std::array<char, BYTES_TO_COMPARE>> def;
