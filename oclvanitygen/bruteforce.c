@@ -59,9 +59,17 @@ static unsigned long long rotateLeft(unsigned long long value, unsigned int shif
 }
 
 static int calculate_hash(char* bytes2compare, bruteforce_context_t* vcpp) {
-	unsigned long long hashcode = *(unsigned long long *) (bytes2compare + sizeof(char));
+	const unsigned int di = sizeof(unsigned int);
+	const unsigned int n = (BYTES_TO_COMPARE / di) * di;
+	const int sizeofchar = sizeof(char);
 
-	return (hashcode ^ (hashcode >> 17)) % vcpp->base.vc_npatterns;
+	unsigned int hashcode = *(unsigned int*)(bytes2compare + sizeofchar);
+
+	for (int i = 1 + di; i < n; i += di) {
+		hashcode ^= *(unsigned int*)(bytes2compare + i * sizeofchar);
+	}
+
+	return hashcode % vcpp->base.vc_npatterns;
 }
 
 static int
