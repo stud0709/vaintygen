@@ -1,3 +1,20 @@
+# Let's beat the hell out of bitcoin! (spoiler: apparently not)
+...well this is a (mathematically futile) brute force for bitcoin addresses based on Windows port of vanitygen (found at https://github.com/AngelTs/vanitygen-plusplus-ported-for-VS2019). I've just added [bruteforce.c](oclvanitygen/bruteforce.c) - more or less to try some C/C++ programming. It is probably not a coding masterpiece, I know...
+
+It will waste your GPU time to generate bitcoin addresses and match them against a given list. From the mathematical standpoint, this is not going to work out within your lifetime, but if you believe in luck, hidden bugs in encryption libraries or other flaws in elliptic curve cryptography / hash algorithms, or you are simply bored - why not?
+
+## How to get started
+
+1. Compile oclvanitygen
+2. Get a list of legacy bitcoin addresses (aka P2PKH) - one per line. Here's how it works for me with WSL (why WSL? because .gz files are blocked by my Windows browser, and because of the subsequent steps):
+   - `wget http://addresses.loyce.club/blockchair_bitcoin_addresses_and_balance_LATEST.tsv.gz` (This list contains addresses and the current amount in the wallet)
+   - `gunzip blockchair_bitcoin_addresses_and_balance_LATEST.tsv.gz`
+   - `grep -o -E "^1\w+" blockchair_bitcoin_addresses_and_balance_LATEST.tsv | head -n 1000000 > p2pkh.dat` (This will get rid of the amount value and take first 1.000.000 P2PKH addresses, wallets with the highest amount first)
+3. Back on Windows, you can now run smth. like `oclvanitygen.exe -t 3 -u p2pkh.dat` with thread count depending on your GPU (the threads are being used to check the generated addresses against the list, this is not part of GPU logic), make some heat and waste some electricity.
+4. Reward the guys, who wrote vanitygen (s. below) - they've done a great job. 
+
+Here's the original readme of the vanitygen VS2019 port:
+
 # Vanitygen plus plus for VS2019
 Vanity address generator for BTC, ETH, LTC, etc (more than 100 crypto currencies).
 
